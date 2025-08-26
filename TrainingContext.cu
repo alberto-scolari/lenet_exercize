@@ -1,3 +1,5 @@
+#include <vector>
+
 #include <cublas_v2.h>
 
 #include "TrainingContext.h"
@@ -133,8 +135,6 @@ size_t TrainingContext::SetFwdConvolutionTensors(ConvBiasLayer &conv, cudnnTenso
                                                     cudnnFilterDescriptor_t &filterDesc, cudnnConvolutionDescriptor_t &convDesc,
                                                     cudnnConvolutionFwdAlgo_t &algo)
 {
-    size_t sizeInBytes = 0;
-
     int n = m_batchSize;
     int c = conv.in_channels;
     int h = conv.in_height;
@@ -180,22 +180,27 @@ size_t TrainingContext::SetFwdConvolutionTensors(ConvBiasLayer &conv, cudnnTenso
                                             CUDNN_DATA_FLOAT,
                                             n, c,
                                             h, w));
-    checkCUDNN(cudnnGetConvolutionForwardAlgorithm(cudnnHandle,
+    int count = 0;
+    checkCUDNN(cudnnGetConvolutionForwardAlgorithmMaxCount(cudnnHandle, &count));
+    std::vector<cudnnConvolutionFwdAlgoPerf_t> perf_info(count);
+    int returned_count;
+    checkCUDNN(cudnnFindConvolutionForwardAlgorithm(cudnnHandle,
                                                     srcTensorDesc,
                                                     filterDesc,
                                                     convDesc,
                                                     dstTensorDesc,
-                                                    CUDNN_CONVOLUTION_FWD_PREFER_FASTEST,
-                                                    0,
-                                                    &algo));
-
+                                                    count,
+                                                    &returned_count,
+                                                    perf_info.data()));
+    algo = perf_info[0].algo;
+    size_t sizeInBytes = 0;
     checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(cudnnHandle,
-                                                        srcTensorDesc,
-                                                        filterDesc,
-                                                        convDesc,
-                                                        dstTensorDesc,
-                                                        algo,
-                                                        &sizeInBytes));
+                                                       srcTensorDesc,
+                                                       filterDesc,
+                                                       convDesc,
+                                                       dstTensorDesc,
+                                                       algo,
+                                                       &sizeInBytes));
 
     return sizeInBytes;
 }
@@ -288,9 +293,14 @@ size_t TrainingContext::SetBwdConvolutionTensors(cudnnTensorDescriptor_t &srcTen
     // If backprop filter algorithm was requested
     if (falgo)
     {
-        checkCUDNN(cudnnGetConvolutionBackwardFilterAlgorithm(
+        int count = 0;
+        checkCUDNN(cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(cudnnHandle, &count));
+        std::vector<cudnnConvolutionBwdFilterAlgoPerf_t> perf_info(count);
+        int returned_count = 0;
+        checkCUDNN(cudnnFindConvolutionBackwardFilterAlgorithm(
             cudnnHandle, srcTensorDesc, dstTensorDesc, convDesc, filterDesc,
-            CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST, 0, falgo));
+            count, &returned_count, perf_info.data()));
+        *falgo = perf_info[0].algo;
 
         checkCUDNN(cudnnGetConvolutionBackwardFilterWorkspaceSize(
             cudnnHandle, srcTensorDesc, dstTensorDesc, convDesc, filterDesc,
@@ -302,9 +312,15 @@ size_t TrainingContext::SetBwdConvolutionTensors(cudnnTensorDescriptor_t &srcTen
     // If backprop data algorithm was requested
     if (dalgo)
     {
-        checkCUDNN(cudnnGetConvolutionBackwardDataAlgorithm(
+        int count = 0;
+        checkCUDNN(cudnnGetConvolutionBackwardDataAlgorithmMaxCount(cudnnHandle, &count));
+        std::vector<cudnnConvolutionBwdDataAlgoPerf_t> perf_info(count);
+        int returned_count = 0;
+
+        checkCUDNN(cudnnFindConvolutionBackwardDataAlgorithm(
             cudnnHandle, filterDesc, dstTensorDesc, convDesc, srcTensorDesc,
-            CUDNN_CONVOLUTION_BWD_DATA_PREFER_FASTEST, 0, dalgo));
+            count, &returned_count, perf_info.data()));
+        *dalgo = perf_info[0].algo;
 
         checkCUDNN(cudnnGetConvolutionBackwardDataWorkspaceSize(
             cudnnHandle, filterDesc, dstTensorDesc, convDesc, srcTensorDesc,

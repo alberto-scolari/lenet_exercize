@@ -82,6 +82,23 @@ DEFINE_double(learning_rate, 0.01, "Base learning rate");
 DEFINE_double(lr_gamma, 0.0001, "Learning rate policy gamma");
 DEFINE_double(lr_power, 0.75, "Learning rate policy power");
 
+///////////////////////////////////////////////////////////////////////////////////////////
+// GPU Kernels
+
+/**
+ * Fills a floating-point array with ones.
+ *
+ * @param vec The array to fill.
+ * @param size The number of elements in the array.
+ */
+__global__ void FillOnes(float *vec, int size)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= size)
+        return;
+
+    vec[idx] = 1.0f;
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Main function

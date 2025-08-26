@@ -1,13 +1,34 @@
-# IDIR=./
 CXX = nvcc
 
-all: clean build
+.SUFFIXES: .o .cpp .h .cu .cu.o .cpp.o .d
 
-build: cudnn_example.cpp
-	$(CXX) cudnn_example.cpp --std c++17 -o cudnn_example.exe -Wno-deprecated-gpu-targets -I/usr/local/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include -lcuda -lcudnn
+CPPFLAGS := --std c++17 -Wno-deprecated-gpu-targets -I/usr/local/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include -MMD -MP
+LDLIBS := -lcudnn -lcublas -lcuda
+
+sources := ConvBiasLayer.cpp FullyConnectedLayer.cpp readubyte.cpp lenet.cu TrainingContext.cu
+objs := $(addprefix build/, $(addsuffix .o, $(sources)))
+deps = $(objs:%.o=%.d)
+
+exe_name := build/lenet_example.exe
+
+all: $(exe_name)
+
+-include $(deps)
+
+build:
+	mkdir -p build
+
+build/%.cu.o : %.cu | build
+	$(CXX) $< -c -o $@ $(CPPFLAGS)
+
+build/%.cpp.o : %.cpp | build
+	$(CXX) $< -c -o $@ $(CPPFLAGS)
+
+$(exe_name): $(objs) | build
+	$(CXX) $^  -o $@ $(LDLIBS)
 
 run:
-	./cudnn_example.exe $(ARGS)
+	./$(exe_name) $(ARGS)
 
 clean:
-	rm -f cudnn_example.exe output*.txt 
+	rm -rf build
