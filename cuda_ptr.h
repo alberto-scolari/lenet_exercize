@@ -49,9 +49,7 @@ public:
     const T *operator()() const { return holder.get(); }
 
     // implicit conversion to contained type
-    /*
     operator T*() {
         return holder.get();
     }
-    */
 };
