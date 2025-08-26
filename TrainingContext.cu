@@ -1,4 +1,5 @@
 #include <vector>
+#include <tuple>
 
 #include <cublas_v2.h>
 
@@ -333,18 +334,22 @@ size_t TrainingContext::SetBwdConvolutionTensors(cudnnTensorDescriptor_t &srcTen
 }
 
 void TrainingContext::Backpropagation(ConvBiasLayer &layer_conv1, MaxPoolLayer &layer_pool1, ConvBiasLayer &layer_conv2, MaxPoolLayer &layer_pool2,
-                                        float *data, float *labels, float *conv1, float *pool1, float *conv2, float *pool2, float *fc1, float *fc1relu,
-                                        float *fc2, float *fc2smax, float *dloss_data,
-                                        float *pconv1, float *pconv1bias,
-                                        float *pconv2, float *pconv2bias,
-                                        float *pfc1, float *pfc1bias,
-                                        float *pfc2, float *pfc2bias,
-                                        float *gconv1, float *gconv1bias, float *dpool1,
-                                        float *gconv2, float *gconv2bias, float *dconv2, float *dpool2,
-                                        float *gfc1, float *gfc1bias, float *dfc1, float *dfc1relu,
-                                        float *gfc2, float *gfc2bias, float *dfc2,
-                                        void *workspace, float *onevec)
+                                      float *data, float *labels, float *conv1, float *pool1, float *conv2, float *pool2, float *fc1, float *fc1relu,
+                                      float *fc2, float *fc2smax, float *dloss_data,
+                                      float *pconv1, float *pconv1bias,
+                                      float *pconv2, float *pconv2bias,
+                                      float *pfc1, float *pfc1bias,
+                                      float *pfc2, float *pfc2bias,
+                                      float *gconv1, float *gconv1bias, float *dpool1,
+                                      float *gconv2, float *gconv2bias, float *dconv2, float *dpool2,
+                                      float *gfc1, float *gfc1bias, float *dfc1, float *dfc1relu,
+                                      float *gfc2, float *gfc2bias, float *dfc2,
+                                      void *workspace, float *onevec)
 {
+    // disable warnings by ognoring variables
+    std::ignore = std::make_tuple(layer_conv1, layer_pool1, layer_conv2, layer_conv2, layer_pool2);
+    std::ignore = std::make_tuple(fc2, pconv1, pconv1bias, pconv2bias, pfc1bias, pfc2bias);
+
     float alpha = 1.0f, beta = 0.0f;
 
     float scalVal = 1.0f / static_cast<float>(m_batchSize);

@@ -2,14 +2,16 @@ CXX = nvcc
 
 .SUFFIXES: .o .cpp .h .cu .cu.o .cpp.o .d
 
-CPPFLAGS := --std c++17 -Wno-deprecated-gpu-targets -I/usr/local/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include -MMD -MP
+CPPFLAGS := --std c++17 -Wno-deprecated-gpu-targets -I/usr/local/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include -isystem deps/argparse/ -MMD -MP --threads 0  -Xcompiler -Wall -Xcompiler -Wextra
 LDLIBS := -lcudnn -lcublas -lcuda
 
-sources := ConvBiasLayer.cpp FullyConnectedLayer.cpp readubyte.cpp lenet.cu TrainingContext.cu
+sources := lenet.cu ConvBiasLayer.cpp FullyConnectedLayer.cpp readubyte.cpp TrainingContext.cu
 objs := $(addprefix build/, $(addsuffix .o, $(sources)))
-deps = $(objs:%.o=%.d)
+deps = $(objs:.o=.d)
 
 exe_name := build/lenet_example.exe
+
+.PHONY: all clean run
 
 all: $(exe_name)
 
@@ -18,13 +20,15 @@ all: $(exe_name)
 build:
 	mkdir -p build
 
-build/%.cu.o : %.cu | build
+build/%.cu.o : %.cu
 	$(CXX) $< -c -o $@ $(CPPFLAGS)
 
-build/%.cpp.o : %.cpp | build
+build/%.cpp.o : %.cpp
 	$(CXX) $< -c -o $@ $(CPPFLAGS)
 
-$(exe_name): $(objs) | build
+$(objs): | build
+
+$(exe_name): $(objs)
 	$(CXX) $^  -o $@ $(LDLIBS)
 
 run:

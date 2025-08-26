@@ -3,8 +3,8 @@
 
 #include "FullyConnectedLayer.h"
 
-FullyConnectedLayer::FullyConnectedLayer(int inputs_, int outputs_) : outputs(outputs_), inputs(inputs_),
-                                                    pneurons(inputs_ * outputs_), pbias(outputs_) {}
+FullyConnectedLayer::FullyConnectedLayer(int inputs_, int outputs_) : inputs(inputs_), outputs(outputs_),
+                                                                      pneurons(inputs_ * outputs_), pbias(outputs_) {}
 
 bool FullyConnectedLayer::FromFile(const char *fileprefix)
 {
