@@ -27,6 +27,7 @@
 #include "MaxPoolLayer.h"
 #include "FullyConnectedLayer.h"
 #include "TrainingContext.h"
+#include "cuda_ptr.h"
 
 /**
  * Saves a PGM grayscale image out of unsigned 8-bit data
@@ -210,10 +211,11 @@ int main(int argc, char **argv)
     // Create GPU data structures
 
     // Forward propagation data
-    float *d_data, *d_labels, *d_conv1, *d_pool1, *d_conv2, *d_pool2, *d_fc1, *d_fc1relu, *d_fc2, *d_fc2smax;
+    float *d_labels, *d_conv1, *d_pool1, *d_conv2, *d_pool2, *d_fc1, *d_fc1relu, *d_fc2, *d_fc2smax;
     //                         Buffer    | Element       | N                   | C                  | H                                 | W
     //-----------------------------------------------------------------------------------------------------------------------------------------
-    checkCudaErrors(cudaMalloc(&d_data, sizeof(float) * context.m_batchSize * channels * height * width));
+    // checkCudaErrors(cudaMalloc(&d_data, sizeof(float) * context.m_batchSize * channels * height * width));
+    cuda_ptr<float> d_data(context.m_batchSize * 1 * 1 * 1);
     checkCudaErrors(cudaMalloc(&d_labels, sizeof(float) * context.m_batchSize * 1 * 1 * 1));
     checkCudaErrors(cudaMalloc(&d_conv1, sizeof(float) * context.m_batchSize * conv1.out_channels * conv1.out_height * conv1.out_width));
     checkCudaErrors(cudaMalloc(&d_pool1, sizeof(float) * context.m_batchSize * conv1.out_channels * (conv1.out_height / pool1.stride) * (conv1.out_width / pool1.stride)));
@@ -306,19 +308,19 @@ int main(int argc, char **argv)
         int imageid = iter % (train_size / context.m_batchSize);
 
         // Prepare current batch on device
-        checkCudaErrors(cudaMemcpyAsync(d_data, &train_images_float[imageid * context.m_batchSize * width * height * channels],
+        checkCudaErrors(cudaMemcpyAsync(d_data(), &train_images_float[imageid * context.m_batchSize * width * height * channels],
                                         sizeof(float) * context.m_batchSize * channels * width * height, cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpyAsync(d_labels, &train_labels_float[imageid * context.m_batchSize],
                                         sizeof(float) * context.m_batchSize, cudaMemcpyHostToDevice));
 
         // Forward propagation
-        context.ForwardPropagation(d_data, d_conv1, d_pool1, d_conv2, d_pool2, d_fc1, d_fc1relu, d_fc2, d_fc2smax,
+        context.ForwardPropagation(d_data(), d_conv1, d_pool1, d_conv2, d_pool2, d_fc1, d_fc1relu, d_fc2, d_fc2smax,
                                    d_pconv1, d_pconv1bias, d_pconv2, d_pconv2bias, d_pfc1, d_pfc1bias, d_pfc2, d_pfc2bias,
                                    d_cudnn_workspace, d_onevec);
 
         // Backward propagation
         context.Backpropagation(conv1, pool1, conv2, pool2,
-                                d_data, d_labels, d_conv1, d_pool1, d_conv2, d_pool2, d_fc1, d_fc1relu, d_fc2, d_fc2smax, d_dlossdata,
+                                d_data(), d_labels, d_conv1, d_pool1, d_conv2, d_pool2, d_fc1, d_fc1relu, d_fc2, d_fc2smax, d_dlossdata,
                                 d_pconv1, d_pconv1bias, d_pconv2, d_pconv2bias, d_pfc1, d_pfc1bias, d_pfc2, d_pfc2bias,
                                 d_gconv1, d_gconv1bias, d_dpool1, d_gconv2, d_gconv2bias, d_dconv2, d_dpool2, d_gfc1, d_gfc1bias,
                                 d_dfc1, d_dfc1relu, d_gfc2, d_gfc2bias, d_dfc2, d_cudnn_workspace, d_onevec);
@@ -383,10 +385,10 @@ int main(int argc, char **argv)
             for (int j = 0; j < width * height; ++j)
                 data[j] = (float)test_images[i * width * height * channels + j] / 255.0f;
 
-            checkCudaErrors(cudaMemcpyAsync(d_data, &data[0], sizeof(float) * width * height, cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpyAsync(d_data(), &data[0], sizeof(float) * width * height, cudaMemcpyHostToDevice));
 
             // Forward propagate test image
-            test_context.ForwardPropagation(d_data, d_conv1, d_pool1, d_conv2, d_pool2, d_fc1, d_fc1relu, d_fc2, d_fc2smax,
+            test_context.ForwardPropagation(d_data(), d_conv1, d_pool1, d_conv2, d_pool2, d_fc1, d_fc1relu, d_fc2, d_fc2smax,
                                             d_pconv1, d_pconv1bias, d_pconv2, d_pconv2bias, d_pfc1, d_pfc1bias,
                                             d_pfc2, d_pfc2bias, d_cudnn_workspace, d_onevec);
 
@@ -413,7 +415,7 @@ int main(int argc, char **argv)
     }
 
     // Free data structures
-    checkCudaErrors(cudaFree(d_data));
+    //checkCudaErrors(cudaFree(d_data));
     checkCudaErrors(cudaFree(d_conv1));
     checkCudaErrors(cudaFree(d_pool1));
     checkCudaErrors(cudaFree(d_conv2));
