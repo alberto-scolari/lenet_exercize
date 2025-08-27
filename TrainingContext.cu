@@ -213,6 +213,8 @@ void TrainingContext::ForwardPropagation(float *data, float *conv1, float *pool1
                                             float *pfc1, float *pfc1bias,
                                             float *pfc2, float *pfc2bias, void *workspace, float *onevec)
 {
+    // LeNet-4 structure
+    // https://sh-tsang.medium.com/paper-brief-review-of-lenet-1-lenet-4-lenet-5-boosted-lenet-4-image-classification-1f5f809dbf17
     float alpha = 1.0f, beta = 0.0f;
     checkCudaErrors(cudaSetDevice(m_gpuid));
 
