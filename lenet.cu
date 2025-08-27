@@ -6,6 +6,9 @@
 #include <vector>
 #include <tuple>
 #include <string>
+#include <algorithm>
+#include <cstddef>
+#include <iterator>
 
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
@@ -30,8 +33,7 @@
  * @param vec The array to fill.
  * @param size The number of elements in the array.
  */
-__global__ void FillOnes(float *vec, int size)
-{
+__global__ void FillOnes(float *vec, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= size)
         return;
@@ -60,8 +62,7 @@ int main(int argc, char **argv)
     double lr_gamma = 0.01;
     double lr_power = 0.75;
 
-    try
-    {
+    try {
         // first parse arguments from command line
         argparse::ArgumentParser program("lenet_exercize", "1.0", argparse::default_arguments::help);
 
@@ -85,12 +86,10 @@ int main(int argc, char **argv)
 
         program.parse_args(argc, argv);
     }
-    catch (const std::exception &err)
-    {
+    catch (const std::exception &err) {
         std::cerr << "Program error! An exception occurred: \n" << err.what();
     }
-    catch (...)
-    {
+    catch (...) {
         std::cerr << "Program error! An unknow type of exception occurred.\nAborting.";
     }
 
@@ -141,15 +140,13 @@ int main(int argc, char **argv)
 
     // Determine initial network structure
     bool bRet = true;
-    if (pretrained)
-    {
+    if (pretrained) {
         bRet = conv1.FromFile("conv1");
         bRet &= conv2.FromFile("conv2");
         bRet &= fc1.FromFile("ip1");
         bRet &= fc2.FromFile("ip2");
     }
-    if (!bRet || !pretrained)
-    {
+    if (!bRet || !pretrained) {
         // Create random network
         std::random_device rd;
         std::mt19937 gen(random_seed < 0 ? rd() : static_cast<unsigned int>(random_seed));
@@ -165,22 +162,14 @@ int main(int argc, char **argv)
         std::uniform_real_distribution<> dfc2(-wfc2, wfc2);
 
         // Randomize network
-        for (auto &&iter : conv1.pconv)
-            iter = static_cast<float>(dconv1(gen));
-        for (auto &&iter : conv1.pbias)
-            iter = static_cast<float>(dconv1(gen));
-        for (auto &&iter : conv2.pconv)
-            iter = static_cast<float>(dconv2(gen));
-        for (auto &&iter : conv2.pbias)
-            iter = static_cast<float>(dconv2(gen));
-        for (auto &&iter : fc1.pneurons)
-            iter = static_cast<float>(dfc1(gen));
-        for (auto &&iter : fc1.pbias)
-            iter = static_cast<float>(dfc1(gen));
-        for (auto &&iter : fc2.pneurons)
-            iter = static_cast<float>(dfc2(gen));
-        for (auto &&iter : fc2.pbias)
-            iter = static_cast<float>(dfc2(gen));
+        std::generate(conv1.pconv.begin(), conv1.pconv.end(), [&]() { return static_cast<float>(dconv1(gen)); });
+        std::generate(conv1.pbias.begin(), conv1.pbias.end(), [&]() { return static_cast<float>(dconv1(gen)); });
+        std::generate(conv2.pconv.begin(), conv2.pconv.end(), [&]() { return static_cast<float>(dconv2(gen)); });
+        std::generate(conv2.pbias.begin(), conv2.pbias.end(), [&]() { return static_cast<float>(dconv2(gen)); });
+        std::generate(fc1.pneurons.begin(), fc1.pneurons.end(), [&]() { return static_cast<float>(dfc1(gen)); });
+        std::generate(fc1.pbias.begin(), fc1.pbias.end(), [&]() { return static_cast<float>(dfc1(gen)); });
+        std::generate(fc2.pneurons.begin(), fc2.pneurons.end(), [&]() { return static_cast<float>(dfc2(gen)); });
+        std::generate(fc2.pbias.begin(), fc2.pbias.end(), [&]() { return static_cast<float>(dfc2(gen)); });
     }
 
     /////////////////////////////////////////////////////////////////////////////
@@ -189,7 +178,6 @@ int main(int argc, char **argv)
     // Forward propagation data
     //                         Buffer    | Element       | N                   | C                  | H                                 | W
     //-----------------------------------------------------------------------------------------------------------------------------------------
-    // checkCudaErrors(cudaMalloc(&d_data, sizeof(float) * context.m_batchSize * channels * height * width));
     cuda_ptr<float> d_data(context.m_batchSize * channels * height * width);
     cuda_ptr<float> d_labels(context.m_batchSize * 1 * 1 * 1);
     cuda_ptr<float> d_conv1(context.m_batchSize * conv1.out_channels * conv1.out_height * conv1.out_width);
@@ -234,10 +222,11 @@ int main(int argc, char **argv)
     cuda_ptr<float> d_dlossdata(context.m_batchSize * fc2.outputs);
 
     // Temporary buffers and workspaces
-    void *d_cudnn_workspace = nullptr;
+    cuda_ptr<std::byte> d_cudnn_workspace;
     cuda_ptr<float> d_onevec(context.m_batchSize);
-    if (context.m_workspaceSize > 0)
-        checkCudaErrors(cudaMalloc(&d_cudnn_workspace, context.m_workspaceSize));
+    if (context.m_workspaceSize > 0) {
+        d_cudnn_workspace.reset(context.m_workspaceSize);
+    }
 
     /////////////////////////////////////////////////////////////////////////////
 
@@ -258,19 +247,16 @@ int main(int argc, char **argv)
 
     // Normalize training set to be in [0,1]
     std::vector<float> train_images_float(train_images.size()), train_labels_float(train_size);
-    for (size_t i = 0; i < train_size * channels * width * height; ++i)
-        train_images_float[i] = (float)train_images[i] / 255.0f;
+    std::transform(train_images.begin(), train_images.end(),
+        train_images_float.begin(), [](uint8_t v) { return static_cast<float>(v) / 255.0f; });
 
-    for (size_t i = 0; i < train_size; ++i)
-        train_labels_float[i] = (float)train_labels[i];
+    std::copy(train_labels.begin(), train_labels.end(), train_labels_float.begin());
 
     std::cout << "Training..." << std::endl;
-
     // Use SGD to train the network
     checkCudaErrors(cudaDeviceSynchronize());
     auto t1 = std::chrono::high_resolution_clock::now();
-    for (int iter = 0; iter < iterations; ++iter)
-    {
+    for (int iter = 0; iter < iterations; ++iter) {
         // Train
         int imageid = iter % (train_size / context.m_batchSize);
 
@@ -306,8 +292,7 @@ int main(int argc, char **argv)
     std::cout << "Iteration time: " << (std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0f / iterations)
         << " ms" << std::endl;
 
-    if (save_data)
-    {
+    if (save_data) {
         // Copy trained weights from GPU to CPU
         checkCudaErrors(cudaMemcpy(&conv1.pconv[0], d_pconv1, sizeof(float) * conv1.pconv.size(), cudaMemcpyDeviceToHost));
         checkCudaErrors(cudaMemcpy(&conv1.pbias[0], d_pconv1bias, sizeof(float) * conv1.pbias.size(), cudaMemcpyDeviceToHost));
@@ -326,65 +311,52 @@ int main(int argc, char **argv)
         fc2.ToFile("ip2");
     }
 
-    float classification_error = 1.0f;
-
-    int classifications = classify;
-    if (classifications < 0)
-        classifications = (int)test_size;
+    const int classifications = classify >= 0 ? classify : (int) test_size;
 
     // Test the resulting neural network's classification
-    if (classifications > 0)
-    {
-        // Initialize a TrainingContext structure for testing (different batch size)
-        TrainingContext test_context(gpu, 1, conv1, pool1, conv2, pool2, fc1, fc2);
-
-        // Ensure correct workspaceSize is allocated for testing
-        if (context.m_workspaceSize < test_context.m_workspaceSize)
-        {
-            checkCudaErrors(cudaFree(d_cudnn_workspace));
-            checkCudaErrors(cudaMalloc(&d_cudnn_workspace, test_context.m_workspaceSize));
-        }
-
-        int num_errors = 0;
-        for (int i = 0; i < classifications; ++i)
-        {
-            std::vector<float> data(width * height);
-            // Normalize image to be in [0,1]
-            for (unsigned j = 0; j < width * height; ++j)
-                data[j] = (float)test_images[i * width * height * channels + j] / 255.0f;
-
-            checkCudaErrors(cudaMemcpyAsync(d_data, &data[0], sizeof(float) * width * height, cudaMemcpyHostToDevice));
-
-            // Forward propagate test image
-            test_context.ForwardPropagation(d_data, d_conv1, d_pool1, d_conv2, d_pool2, d_fc1, d_fc1relu, d_fc2, d_fc2smax,
-                                            d_pconv1, d_pconv1bias, d_pconv2, d_pconv2bias, d_pfc1, d_pfc1bias,
-                                            d_pfc2, d_pfc2bias, d_cudnn_workspace, d_onevec);
-
-            // Perform classification
-            std::vector<float> class_vec(10);
-
-            // Copy back result
-            checkCudaErrors(cudaMemcpy(&class_vec[0], d_fc2smax, sizeof(float) * 10, cudaMemcpyDeviceToHost));
-
-            // Determine classification according to maximal response
-            int chosen = 0;
-            for (int id = 1; id < 10; ++id)
-            {
-                if (class_vec[chosen] < class_vec[id])
-                    chosen = id;
-            }
-
-            if (chosen != test_labels[i])
-                ++num_errors;
-        }
-        classification_error = (float)num_errors / (float)classifications;
-
-        std::cout << "Classification result: " << (classification_error * 100.0f) << "%% error (used "
-            << classifications << " images)" << std::endl;
+    if (classifications <= 0) {
+        return 0;
     }
 
-    if (d_cudnn_workspace != nullptr)
-        checkCudaErrors(cudaFree(d_cudnn_workspace));
+    // Initialize a TrainingContext structure for testing (different batch size)
+    TrainingContext test_context(gpu, 1, conv1, pool1, conv2, pool2, fc1, fc2);
+
+    // Ensure correct workspaceSize is allocated for testing
+    if (context.m_workspaceSize < test_context.m_workspaceSize) {
+        d_cudnn_workspace.reset(test_context.m_workspaceSize);
+    }
+
+    int num_errors = 0;
+    std::vector<float> data(width * height);
+    std::vector<float> class_vec(10);
+    for (int i = 0; i < classifications; ++i)
+    {
+        // Normalize image to be in [0,1]
+        uint8_t *p = test_images.data() + i * width * height * channels;
+        std::transform(p, p + width * height, data.data(), [](uint8_t v) { return static_cast<float>(v) / 255.0f; });
+
+        checkCudaErrors(cudaMemcpyAsync(d_data, &data[0], sizeof(float) * width * height, cudaMemcpyHostToDevice));
+
+        // Forward propagate test image
+        test_context.ForwardPropagation(d_data, d_conv1, d_pool1, d_conv2, d_pool2, d_fc1, d_fc1relu, d_fc2, d_fc2smax,
+                                        d_pconv1, d_pconv1bias, d_pconv2, d_pconv2bias, d_pfc1, d_pfc1bias,
+                                        d_pfc2, d_pfc2bias, d_cudnn_workspace, d_onevec);
+
+        // Perform classification
+
+        // Copy back result
+        checkCudaErrors(cudaMemcpy(&class_vec[0], d_fc2smax, sizeof(float) * 10, cudaMemcpyDeviceToHost));
+
+        // Determine classification according to maximal response
+        const int chosen = std::distance(class_vec.begin(), max_element(class_vec.begin(), class_vec.end()));
+
+        if (chosen != test_labels[i]) {
+            ++num_errors;
+        }
+    }
+    const float classification_error = (float)num_errors / (float)classifications;
+    std::cout << "Classification result: " << (classification_error * 100.0f) << "%% error (used "
+        << classifications << " images)" << std::endl;
 
     return 0;
 }

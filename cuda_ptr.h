@@ -26,9 +26,13 @@ template <typename T> static inline void free_cuda_ptr(T * p)
 template <typename T> class cuda_ptr
 {
     std::unique_ptr<T, std::remove_reference_t<decltype(free_cuda_ptr<T>)> *> holder;
+    std::size_t __size;
 
 public:
-    cuda_ptr(std::size_t _size) : holder(alloc_cuda_ptr<T>(_size), free_cuda_ptr<T>) {
+    cuda_ptr() : __size(0), holder(nullptr, free_cuda_ptr<T>) {}
+
+    cuda_ptr(std::size_t _size) : __size(_size), holder(alloc_cuda_ptr<T>(_size), free_cuda_ptr<T>)
+    {
         if (not bool(holder)) {
             std::stringstream ss("cannot allocate CUDA memory for ");
             ss << _size << " bytes";
@@ -51,5 +55,14 @@ public:
     // implicit conversion to contained type
     operator T*() {
         return holder.get();
+    }
+
+    void reset(std::size_t _size) {
+        holder.reset(alloc_cuda_ptr<T>(_size));
+        __size = _size;
+    }
+
+    std::size_t size() const {
+        return __size;
     }
 };
