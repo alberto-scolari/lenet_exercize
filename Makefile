@@ -11,9 +11,22 @@ deps = $(objs:.o=.d)
 
 exe_name := build/lenet_example.exe
 
+mnist_bins := t10k-images-idx3-ubyte t10k-labels-idx1-ubyte train-images-idx3-ubyte train-labels-idx1-ubyte
+mnist_paths := $(addprefix deps/mnist/, $(mnist_bins))
+
 .PHONY: all clean run
 
 all: $(exe_name)
+
+deps/mnist:
+	mkdir -p deps/mnist
+
+$(mnist_paths): | deps/mnist
+
+deps/mnist/%: 
+	wget https://github.com/harrypnh/lenet5-from-scratch/blob/main/dataset/MNIST/$%
+
+mnist : $(mnist_paths)
 
 -include $(deps)
 

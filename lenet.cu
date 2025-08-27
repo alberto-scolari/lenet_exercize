@@ -65,10 +65,11 @@ int main(int argc, char **argv)
     std::size_t batch_size = 64;
     bool pretrained = false;
     bool save_data = false;
-    std::string FLAGS_train_images("train-images-idx3-ubyte");
-    std::string FLAGS_train_labels("train-labels-idx1-ubyte");
-    std::string FLAGS_test_images("t10k-images-idx3-ubyte");
-    std::string FLAGS_test_labels("t10k-labels-idx1-ubyte");
+    const std::string base_path("deps/mnist/");
+    std::string FLAGS_train_images = base_path + "train-images-idx3-ubyte";
+    std::string FLAGS_train_labels = base_path + "train-labels-idx1-ubyte";
+    std::string FLAGS_test_images = base_path + "t10k-images-idx3-ubyte";
+    std::string FLAGS_test_labels = base_path + "t10k-labels-idx1-ubyte";
     double learning_rate = 0.01;
     double lr_gamma = 0.01;
     double lr_power = 0.75;
@@ -113,10 +114,11 @@ int main(int argc, char **argv)
     printf("Reading input data\n");
 
     // Read dataset sizes
-    size_t train_size = ReadUByteDataset(FLAGS_train_images.c_str(), FLAGS_train_labels.c_str(), nullptr, nullptr, width, height);
-    size_t test_size = ReadUByteDataset(FLAGS_test_images.c_str(), FLAGS_test_labels.c_str(), nullptr, nullptr, width, height);
-    if (train_size == 0)
+    const size_t train_size = ReadUByteDataset(FLAGS_train_images.c_str(), FLAGS_train_labels.c_str(), nullptr, nullptr, width, height);
+    const size_t test_size = ReadUByteDataset(FLAGS_test_images.c_str(), FLAGS_test_labels.c_str(), nullptr, nullptr, width, height);
+    if (train_size == 0) {
         return 1;
+    }
 
     std::vector<uint8_t> train_images(train_size * width * height * channels), train_labels(train_size);
     std::vector<uint8_t> test_images(test_size * width * height * channels), test_labels(test_size);
@@ -143,8 +145,7 @@ int main(int argc, char **argv)
     checkCudaErrors(cudaGetDeviceCount(&num_gpus));
     if (gpu < 0 || gpu >= num_gpus)
     {
-        printf("ERROR: Invalid GPU ID %d (There are %d GPUs on this machine)\n",
-                gpu, num_gpus);
+        printf("ERROR: Invalid GPU ID %d (There are %d GPUs on this machine)\n", gpu, num_gpus);
         return 4;
     }
 
@@ -212,7 +213,7 @@ int main(int argc, char **argv)
     //                         Buffer    | Element       | N                   | C                  | H                                 | W
     //-----------------------------------------------------------------------------------------------------------------------------------------
     // checkCudaErrors(cudaMalloc(&d_data, sizeof(float) * context.m_batchSize * channels * height * width));
-    cuda_ptr<float> d_data(context.m_batchSize * 1 * 1 * 1);
+    cuda_ptr<float> d_data(context.m_batchSize * channels * height * width);
     checkCudaErrors(cudaMalloc(&d_labels, sizeof(float) * context.m_batchSize * 1 * 1 * 1));
     checkCudaErrors(cudaMalloc(&d_conv1, sizeof(float) * context.m_batchSize * conv1.out_channels * conv1.out_height * conv1.out_width));
     checkCudaErrors(cudaMalloc(&d_pool1, sizeof(float) * context.m_batchSize * conv1.out_channels * (conv1.out_height / pool1.stride) * (conv1.out_width / pool1.stride)));
@@ -305,7 +306,7 @@ int main(int argc, char **argv)
         int imageid = iter % (train_size / context.m_batchSize);
 
         // Prepare current batch on device
-        checkCudaErrors(cudaMemcpyAsync(d_data, &train_images_float[imageid * context.m_batchSize * width * height * channels],
+        checkCudaErrors(cudaMemcpyAsync(d_data(), &train_images_float[imageid * context.m_batchSize * width * height * channels],
                                         sizeof(float) * context.m_batchSize * channels * width * height, cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpyAsync(d_labels, &train_labels_float[imageid * context.m_batchSize],
                                         sizeof(float) * context.m_batchSize, cudaMemcpyHostToDevice));
