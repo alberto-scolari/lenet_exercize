@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
               << train_size << std::endl;
     std::exit(1);
   }
-  if (std::size_t s = stdReadUByteDataset(
+  if (std::size_t s = ReadUByteDataset(
           FLAGS_test_images.c_str(), FLAGS_test_labels.c_str(), &test_images[0],
           &test_labels[0], width, height);
       s != test_size) {

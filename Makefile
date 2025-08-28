@@ -30,7 +30,7 @@ deps/mnist:
 $(mnist_paths): | deps/mnist
 
 deps/mnist/%:
-	wget -P $(dir $@) https://github.com/harrypnh/lenet5-from-scratch/blob/main/dataset/MNIST/$(notdir $@)
+	wget -P $(dir $@) https://github.com/harrypnh/lenet5-from-scratch/raw/refs/heads/main/dataset/MNIST/$(notdir $@)
 
 mnist : $(mnist_paths)
 
