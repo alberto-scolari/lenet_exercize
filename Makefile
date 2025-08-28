@@ -1,10 +1,11 @@
 CXX = nvcc
 CLANG_FORMAT_EXE ?= clang-format
+CUDA_DIR ?= /usr/local/cuda
 
 .SUFFIXES: .o .cpp .h .cu .cu.o .cpp.o .d
 
-CPPFLAGS := --std c++17 -Wno-deprecated-gpu-targets -I lenet_exercize/ -isystem /usr/local/cuda/include \
-	-isystem /usr/local/cuda/targets/x86_64-linux/include -isystem deps/argparse/ \
+CPPFLAGS := --std c++17 -Wno-deprecated-gpu-targets -I lenet_exercize/ -isystem $(CUDA_DIR)/include \
+	-isystem $(CUDA_DIR)/targets/x86_64-linux/include -isystem deps/argparse/ \
 	-MMD -MP -Xcompiler -Wall -Xcompiler -Wextra
 LDLIBS := -lcudnn -lcublas -lcuda
 
