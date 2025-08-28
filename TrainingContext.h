@@ -24,9 +24,10 @@ struct TrainingContext
     cudnnPoolingDescriptor_t poolDesc;
     cudnnActivationDescriptor_t fc1Activation;
 
-    int m_gpuid;
-    int m_batchSize;
-    size_t m_workspaceSize;
+    int gpuid;
+    int batchSize;
+    size_t workspaceSize;
+    unsigned blockWidth;
 
     FullyConnectedLayer &ref_fc1, &ref_fc2;
 
@@ -34,9 +35,9 @@ struct TrainingContext
     TrainingContext &operator=(const TrainingContext &) = delete;
     TrainingContext(const TrainingContext &) = delete;
 
-    TrainingContext(int gpuid, int batch_size,
-                    ConvBiasLayer &conv1, MaxPoolLayer &pool1, ConvBiasLayer &conv2, MaxPoolLayer &pool2,
-                    FullyConnectedLayer &fc1, FullyConnectedLayer &fc2);
+    TrainingContext(int gpuid, int batch_size, unsigned _blockWidth,
+            ConvBiasLayer & conv1, MaxPoolLayer &pool1, ConvBiasLayer &conv2, MaxPoolLayer &pool2,
+                                                                    FullyConnectedLayer &fc1, FullyConnectedLayer &fc2);
 
     ~TrainingContext();
 

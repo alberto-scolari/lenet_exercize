@@ -27,15 +27,14 @@ __global__ void SoftmaxLossBackprop(const float *label, int num_labels, int batc
     diff[idx * num_labels + label_value] -= 1.0f;
 }
 
-TrainingContext::TrainingContext(int gpuid, int batch_size,
-                                ConvBiasLayer &conv1, MaxPoolLayer &pool1, ConvBiasLayer &conv2, MaxPoolLayer &pool2,
-                                FullyConnectedLayer &fc1, FullyConnectedLayer &fc2) : ref_fc1(fc1), ref_fc2(fc2), m_gpuid(gpuid)
+TrainingContext::TrainingContext(int gpuid, int batch_size, unsigned _blockWidth,
+                                 ConvBiasLayer &conv1, MaxPoolLayer &pool1, ConvBiasLayer &conv2, MaxPoolLayer &pool2,
+                                 FullyConnectedLayer &fc1, FullyConnectedLayer &fc2) :
+                                 gpuid(gpuid), batchSize(batch_size), blockWidth(_blockWidth), ref_fc1(fc1), ref_fc2(fc2)
 {
-    m_batchSize = batch_size;
-
     // Create CUBLAS and CUDNN handles
     checkCudaErrors(cudaSetDevice(gpuid));
-    checkCudaErrors(cublasCreate(&cublasHandle));
+    checkCuBLAS(cublasCreate(&cublasHandle));
     checkCUDNN(cudnnCreate(&cudnnHandle));
 
     // Create tensor descriptors
@@ -106,15 +105,13 @@ TrainingContext::TrainingContext(int gpuid, int batch_size,
     workspace = std::max(workspace, SetBwdConvolutionTensors(pool1Tensor, conv2Tensor, conv2filterDesc, conv2Desc, &conv2bwfalgo, &conv2bwdalgo));
 
     // The workspace is allocated later (if necessary)
-    m_workspaceSize = workspace;
+    workspaceSize = workspace;
 }
 
 TrainingContext::~TrainingContext()
 {
-    checkCudaErrors(cudaSetDevice(m_gpuid));
+    checkCudaErrors(cudaSetDevice(gpuid));
 
-    checkCudaErrors(cublasDestroy(cublasHandle));
-    checkCUDNN(cudnnDestroy(cudnnHandle));
     checkCUDNN(cudnnDestroyTensorDescriptor(dataTensor));
     checkCUDNN(cudnnDestroyTensorDescriptor(conv1Tensor));
     checkCUDNN(cudnnDestroyTensorDescriptor(conv1BiasTensor));
@@ -130,13 +127,15 @@ TrainingContext::~TrainingContext()
     checkCUDNN(cudnnDestroyConvolutionDescriptor(conv1Desc));
     checkCUDNN(cudnnDestroyConvolutionDescriptor(conv2Desc));
     checkCUDNN(cudnnDestroyPoolingDescriptor(poolDesc));
+    checkCuBLAS(cublasDestroy(cublasHandle));
+    checkCUDNN(cudnnDestroy(cudnnHandle));
 }
 
 size_t TrainingContext::SetFwdConvolutionTensors(ConvBiasLayer &conv, cudnnTensorDescriptor_t &srcTensorDesc, cudnnTensorDescriptor_t &dstTensorDesc,
                                                     cudnnFilterDescriptor_t &filterDesc, cudnnConvolutionDescriptor_t &convDesc,
                                                     cudnnConvolutionFwdAlgo_t &algo)
 {
-    int n = m_batchSize;
+    int n = batchSize;
     int c = conv.in_channels;
     int h = conv.in_height;
     int w = conv.in_width;
@@ -216,12 +215,12 @@ void TrainingContext::ForwardPropagation(float *data, float *conv1, float *pool1
     // LeNet-4 structure
     // https://sh-tsang.medium.com/paper-brief-review-of-lenet-1-lenet-4-lenet-5-boosted-lenet-4-image-classification-1f5f809dbf17
     float alpha = 1.0f, beta = 0.0f;
-    checkCudaErrors(cudaSetDevice(m_gpuid));
+    checkCudaErrors(cudaSetDevice(gpuid));
 
     // Conv1 layer
     checkCUDNN(cudnnConvolutionForward(cudnnHandle, &alpha, dataTensor,
                                         data, conv1filterDesc, pconv1, conv1Desc,
-                                        conv1algo, workspace, m_workspaceSize, &beta,
+                                        conv1algo, workspace, workspaceSize, &beta,
                                         conv1Tensor, conv1));
     checkCUDNN(cudnnAddTensor(cudnnHandle, &alpha, conv1BiasTensor,
                                 pconv1bias, &alpha, conv1Tensor, conv1));
@@ -233,7 +232,7 @@ void TrainingContext::ForwardPropagation(float *data, float *conv1, float *pool1
     // Conv2 layer
     checkCUDNN(cudnnConvolutionForward(cudnnHandle, &alpha, pool1Tensor,
                                         pool1, conv2filterDesc, pconv2, conv2Desc,
-                                        conv2algo, workspace, m_workspaceSize, &beta,
+                                        conv2algo, workspace, workspaceSize, &beta,
                                         conv2Tensor, conv2));
     checkCUDNN(cudnnAddTensor(cudnnHandle, &alpha, conv2BiasTensor,
                                 pconv2bias, &alpha, conv2Tensor, conv2));
@@ -244,21 +243,21 @@ void TrainingContext::ForwardPropagation(float *data, float *conv1, float *pool1
 
     // FC1 layer
     // Forward propagate neurons using weights (fc1 = pfc1'*pool2)
-    checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
-                                ref_fc1.outputs, m_batchSize, ref_fc1.inputs,
-                                &alpha,
-                                pfc1, ref_fc1.inputs,
-                                pool2, ref_fc1.inputs,
-                                &beta,
-                                fc1, ref_fc1.outputs));
+    checkCuBLAS(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
+                            ref_fc1.outputs, batchSize, ref_fc1.inputs,
+                            &alpha,
+                            pfc1, ref_fc1.inputs,
+                            pool2, ref_fc1.inputs,
+                            &beta,
+                            fc1, ref_fc1.outputs));
     // Add bias using GEMM's "beta" (fc1 += pfc1bias*1_vec')
-    checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
-                                ref_fc1.outputs, m_batchSize, 1,
-                                &alpha,
-                                pfc1bias, ref_fc1.outputs,
-                                onevec, 1,
-                                &alpha,
-                                fc1, ref_fc1.outputs));
+    checkCuBLAS(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
+                            ref_fc1.outputs, batchSize, 1,
+                            &alpha,
+                            pfc1bias, ref_fc1.outputs,
+                            onevec, 1,
+                            &alpha,
+                            fc1, ref_fc1.outputs));
 
     // ReLU activation
     checkCUDNN(cudnnActivationForward(cudnnHandle, fc1Activation, &alpha,
@@ -266,21 +265,21 @@ void TrainingContext::ForwardPropagation(float *data, float *conv1, float *pool1
 
     // FC2 layer
     // Forward propagate neurons using weights (fc2 = pfc2'*fc1relu)
-    checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
-                                ref_fc2.outputs, m_batchSize, ref_fc2.inputs,
-                                &alpha,
-                                pfc2, ref_fc2.inputs,
-                                fc1relu, ref_fc2.inputs,
-                                &beta,
-                                fc2, ref_fc2.outputs));
+    checkCuBLAS(cublasSgemm(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
+                            ref_fc2.outputs, batchSize, ref_fc2.inputs,
+                            &alpha,
+                            pfc2, ref_fc2.inputs,
+                            fc1relu, ref_fc2.inputs,
+                            &beta,
+                            fc2, ref_fc2.outputs));
     // Add bias using GEMM's "beta" (fc2 += pfc2bias*1_vec')
-    checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
-                                ref_fc2.outputs, m_batchSize, 1,
-                                &alpha,
-                                pfc2bias, ref_fc2.outputs,
-                                onevec, 1,
-                                &alpha,
-                                fc2, ref_fc2.outputs));
+    checkCuBLAS(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
+                            ref_fc2.outputs, batchSize, 1,
+                            &alpha,
+                            pfc2bias, ref_fc2.outputs,
+                            onevec, 1,
+                            &alpha,
+                            fc2, ref_fc2.outputs));
 
     // Softmax loss
     checkCUDNN(cudnnSoftmaxForward(cudnnHandle, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_CHANNEL,
@@ -294,8 +293,7 @@ size_t TrainingContext::SetBwdConvolutionTensors(cudnnTensorDescriptor_t &srcTen
     size_t sizeInBytes = 0, tmpsize = 0;
 
     // If backprop filter algorithm was requested
-    if (falgo)
-    {
+    if (falgo) {
         int count = 0;
         checkCUDNN(cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(cudnnHandle, &count));
         std::vector<cudnnConvolutionBwdFilterAlgoPerf_t> perf_info(count);
@@ -313,8 +311,7 @@ size_t TrainingContext::SetBwdConvolutionTensors(cudnnTensorDescriptor_t &srcTen
     }
 
     // If backprop data algorithm was requested
-    if (dalgo)
-    {
+    if (dalgo) {
         int count = 0;
         checkCUDNN(cudnnGetConvolutionBackwardDataAlgorithmMaxCount(cudnnHandle, &count));
         std::vector<cudnnConvolutionBwdDataAlgoPerf_t> perf_info(count);
@@ -354,29 +351,29 @@ void TrainingContext::Backpropagation(ConvBiasLayer &layer_conv1, MaxPoolLayer &
 
     float alpha = 1.0f, beta = 0.0f;
 
-    float scalVal = 1.0f / static_cast<float>(m_batchSize);
+    float scalVal = 1.0f / static_cast<float>(batchSize);
 
-    checkCudaErrors(cudaSetDevice(m_gpuid));
+    checkCudaErrors(cudaSetDevice(gpuid));
 
     // Initialization (using the training error function)
-    checkCudaErrors(cudaMemcpyAsync(dloss_data, fc2smax, sizeof(float) * m_batchSize * ref_fc2.outputs, cudaMemcpyDeviceToDevice));
+    checkCudaErrors(cudaMemcpyAsync(dloss_data, fc2smax, sizeof(float) * batchSize * ref_fc2.outputs, cudaMemcpyDeviceToDevice));
 
     // Softmax layer
-    SoftmaxLossBackprop<<<RoundUp(m_batchSize, BW), BW>>>(labels, ref_fc2.outputs, m_batchSize, dloss_data);
+    SoftmaxLossBackprop<<<RoundUp(batchSize, blockWidth), blockWidth>>>(labels, ref_fc2.outputs, batchSize, dloss_data);
 
     // Accounting for batch size in SGD
-    checkCudaErrors(cublasSscal(cublasHandle, ref_fc2.outputs * m_batchSize, &scalVal, dloss_data, 1));
+    checkCuBLAS(cublasSscal(cublasHandle, ref_fc2.outputs * batchSize, &scalVal, dloss_data, 1));
 
     // FC2 layer
     // Compute derivative with respect to weights: gfc2 = (fc1relu * dfc2smax')
-    checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, ref_fc2.inputs, ref_fc2.outputs, m_batchSize,
-                                &alpha, fc1relu, ref_fc2.inputs, dloss_data, ref_fc2.outputs, &beta, gfc2, ref_fc2.inputs));
+    checkCuBLAS(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, ref_fc2.inputs, ref_fc2.outputs, batchSize,
+                            &alpha, fc1relu, ref_fc2.inputs, dloss_data, ref_fc2.outputs, &beta, gfc2, ref_fc2.inputs));
     // Compute derivative with respect to bias: gfc2bias = dfc2smax * 1_vec
-    checkCudaErrors(cublasSgemv(cublasHandle, CUBLAS_OP_N, ref_fc2.outputs, m_batchSize,
-                                &alpha, dloss_data, ref_fc2.outputs, onevec, 1, &beta, gfc2bias, 1));
+    checkCuBLAS(cublasSgemv(cublasHandle, CUBLAS_OP_N, ref_fc2.outputs, batchSize,
+                            &alpha, dloss_data, ref_fc2.outputs, onevec, 1, &beta, gfc2bias, 1));
     // Compute derivative with respect to data (for previous layer): pfc2*dfc2smax (500x10*10xN)
-    checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, ref_fc2.inputs, m_batchSize, ref_fc2.outputs,
-                                &alpha, pfc2, ref_fc2.inputs, dloss_data, ref_fc2.outputs, &beta, dfc2, ref_fc2.inputs));
+    checkCuBLAS(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, ref_fc2.inputs, batchSize, ref_fc2.outputs,
+                            &alpha, pfc2, ref_fc2.inputs, dloss_data, ref_fc2.outputs, &beta, dfc2, ref_fc2.inputs));
 
     // ReLU activation
     checkCUDNN(cudnnActivationBackward(cudnnHandle, fc1Activation, &alpha,
@@ -385,14 +382,14 @@ void TrainingContext::Backpropagation(ConvBiasLayer &layer_conv1, MaxPoolLayer &
 
     // FC1 layer
     // Compute derivative with respect to weights: gfc1 = (pool2 * dfc1relu')
-    checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, ref_fc1.inputs, ref_fc1.outputs, m_batchSize,
-                                &alpha, pool2, ref_fc1.inputs, dfc1relu, ref_fc1.outputs, &beta, gfc1, ref_fc1.inputs));
+    checkCuBLAS(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, ref_fc1.inputs, ref_fc1.outputs, batchSize,
+                            &alpha, pool2, ref_fc1.inputs, dfc1relu, ref_fc1.outputs, &beta, gfc1, ref_fc1.inputs));
     // Compute derivative with respect to bias: gfc1bias = dfc1relu * 1_vec
-    checkCudaErrors(cublasSgemv(cublasHandle, CUBLAS_OP_N, ref_fc1.outputs, m_batchSize,
-                                &alpha, dfc1relu, ref_fc1.outputs, onevec, 1, &beta, gfc1bias, 1));
+    checkCuBLAS(cublasSgemv(cublasHandle, CUBLAS_OP_N, ref_fc1.outputs, batchSize,
+                            &alpha, dfc1relu, ref_fc1.outputs, onevec, 1, &beta, gfc1bias, 1));
     // Compute derivative with respect to data (for previous layer): pfc1*dfc1relu (800x500*500xN)
-    checkCudaErrors(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, ref_fc1.inputs, m_batchSize, ref_fc1.outputs,
-                                &alpha, pfc1, ref_fc1.inputs, dfc1relu, ref_fc1.outputs, &beta, dfc1, ref_fc1.inputs));
+    checkCuBLAS(cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, ref_fc1.inputs, batchSize, ref_fc1.outputs,
+                            &alpha, pfc1, ref_fc1.inputs, dfc1relu, ref_fc1.outputs, &beta, dfc1, ref_fc1.inputs));
 
     // Pool2 layer
     checkCUDNN(cudnnPoolingBackward(cudnnHandle, poolDesc, &alpha,
@@ -405,12 +402,12 @@ void TrainingContext::Backpropagation(ConvBiasLayer &layer_conv1, MaxPoolLayer &
 
     checkCUDNN(cudnnConvolutionBackwardFilter(cudnnHandle, &alpha, pool1Tensor,
                                                 pool1, conv2Tensor, dpool2, conv2Desc,
-                                                conv2bwfalgo, workspace, m_workspaceSize,
+                                                conv2bwfalgo, workspace, workspaceSize,
                                                 &beta, conv2filterDesc, gconv2));
 
     checkCUDNN(cudnnConvolutionBackwardData(cudnnHandle, &alpha, conv2filterDesc,
                                             pconv2, conv2Tensor, dpool2, conv2Desc,
-                                            conv2bwdalgo, workspace, m_workspaceSize,
+                                            conv2bwdalgo, workspace, workspaceSize,
                                             &beta, pool1Tensor, dconv2));
 
     // Pool1 layer
@@ -424,7 +421,7 @@ void TrainingContext::Backpropagation(ConvBiasLayer &layer_conv1, MaxPoolLayer &
 
     checkCUDNN(cudnnConvolutionBackwardFilter(cudnnHandle, &alpha, dataTensor,
                                                 data, conv1Tensor, dpool1, conv1Desc,
-                                                conv1bwfalgo, workspace, m_workspaceSize,
+                                                conv1bwfalgo, workspace, workspaceSize,
                                                 &beta, conv1filterDesc, gconv1));
 
     // No need for convBackwardData because there are no more layers below
@@ -443,29 +440,29 @@ void TrainingContext::UpdateWeights(float learning_rate,
 {
     float alpha = -learning_rate;
 
-    checkCudaErrors(cudaSetDevice(m_gpuid));
+    checkCudaErrors(cudaSetDevice(gpuid));
 
     // Conv1
-    checkCudaErrors(cublasSaxpy(cublasHandle, static_cast<int>(conv1.pconv.size()),
-                                &alpha, gconv1, 1, pconv1, 1));
-    checkCudaErrors(cublasSaxpy(cublasHandle, static_cast<int>(conv1.pbias.size()),
-                                &alpha, gconv1bias, 1, pconv1bias, 1));
+    checkCuBLAS(cublasSaxpy(cublasHandle, static_cast<int>(conv1.pconv.size()),
+                            &alpha, gconv1, 1, pconv1, 1));
+    checkCuBLAS(cublasSaxpy(cublasHandle, static_cast<int>(conv1.pbias.size()),
+                            &alpha, gconv1bias, 1, pconv1bias, 1));
 
     // Conv2
-    checkCudaErrors(cublasSaxpy(cublasHandle, static_cast<int>(conv2.pconv.size()),
-                                &alpha, gconv2, 1, pconv2, 1));
-    checkCudaErrors(cublasSaxpy(cublasHandle, static_cast<int>(conv2.pbias.size()),
-                                &alpha, gconv2bias, 1, pconv2bias, 1));
+    checkCuBLAS(cublasSaxpy(cublasHandle, static_cast<int>(conv2.pconv.size()),
+                            &alpha, gconv2, 1, pconv2, 1));
+    checkCuBLAS(cublasSaxpy(cublasHandle, static_cast<int>(conv2.pbias.size()),
+                            &alpha, gconv2bias, 1, pconv2bias, 1));
 
     // Fully connected 1
-    checkCudaErrors(cublasSaxpy(cublasHandle, static_cast<int>(ref_fc1.pneurons.size()),
-                                &alpha, gfc1, 1, pfc1, 1));
-    checkCudaErrors(cublasSaxpy(cublasHandle, static_cast<int>(ref_fc1.pbias.size()),
-                                &alpha, gfc1bias, 1, pfc1bias, 1));
+    checkCuBLAS(cublasSaxpy(cublasHandle, static_cast<int>(ref_fc1.pneurons.size()),
+                            &alpha, gfc1, 1, pfc1, 1));
+    checkCuBLAS(cublasSaxpy(cublasHandle, static_cast<int>(ref_fc1.pbias.size()),
+                            &alpha, gfc1bias, 1, pfc1bias, 1));
 
     // Fully connected 2
-    checkCudaErrors(cublasSaxpy(cublasHandle, static_cast<int>(ref_fc2.pneurons.size()),
-                                &alpha, gfc2, 1, pfc2, 1));
-    checkCudaErrors(cublasSaxpy(cublasHandle, static_cast<int>(ref_fc2.pbias.size()),
-                                &alpha, gfc2bias, 1, pfc2bias, 1));
+    checkCuBLAS(cublasSaxpy(cublasHandle, static_cast<int>(ref_fc2.pneurons.size()),
+                            &alpha, gfc2, 1, pfc2, 1));
+    checkCuBLAS(cublasSaxpy(cublasHandle, static_cast<int>(ref_fc2.pbias.size()),
+                            &alpha, gfc2bias, 1, pfc2bias, 1));
 }

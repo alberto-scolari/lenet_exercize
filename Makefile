@@ -1,11 +1,14 @@
 CXX = nvcc
+CLANG_FORMAT_EXE ?= clang-format
 
 .SUFFIXES: .o .cpp .h .cu .cu.o .cpp.o .d
 
-CPPFLAGS := --std c++17 -Wno-deprecated-gpu-targets -I/usr/local/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include -isystem deps/argparse/ -MMD -MP --threads 0  -Xcompiler -Wall -Xcompiler -Wextra
+CPPFLAGS := --std c++17 -Wno-deprecated-gpu-targets -I/usr/local/cuda/include \
+	-I/usr/local/cuda/targets/x86_64-linux/include -isystem deps/argparse/ \
+	-MMD -MP -Xcompiler -Wall -Xcompiler -Wextra
 LDLIBS := -lcudnn -lcublas -lcuda
 
-sources := lenet.cu ConvBiasLayer.cpp FullyConnectedLayer.cpp readubyte.cpp TrainingContext.cu
+sources := lenet.cu ConvBiasLayer.cpp FullyConnectedLayer.cpp readubyte.cpp TrainingContext.cu common.cpp
 objs := $(addprefix build/, $(addsuffix .o, $(sources)))
 deps = $(objs:.o=.d)
 
@@ -14,9 +17,12 @@ exe_name := build/lenet_example.exe
 mnist_bins := t10k-images-idx3-ubyte t10k-labels-idx1-ubyte train-images-idx3-ubyte train-labels-idx1-ubyte
 mnist_paths := $(addprefix deps/mnist/, $(mnist_bins))
 
-.PHONY: all clean run
+.PHONY: all clean run clang-format
 
 all: $(exe_name)
+
+clang-format:
+	@$(CLANG_FORMAT_EXE) -i $$(find . -iname '*.h' -o -iname '*.cpp' -o -iname '*.cu')
 
 deps/mnist:
 	mkdir -p deps/mnist
@@ -42,10 +48,13 @@ build/%.cpp.o : %.cpp
 $(objs): | build
 
 $(exe_name): $(objs)
-	$(CXX) $^  -o $@ $(LDLIBS)
+	$(CXX) $^ -o $@ $(LDLIBS)
 
-run:
+run: mnist build
 	./$(exe_name) $(ARGS)
+
+help:
+	./$(exe_name) --help
 
 clean:
 	rm -rf build

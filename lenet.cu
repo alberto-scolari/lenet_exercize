@@ -27,6 +27,9 @@
 ///////////////////////////////////////////////////////////////////////////////////////////
 // GPU Kernels
 
+// Block width for CUDA kernels
+constexpr unsigned BLOCK_WIDTH = 128;
+
 /**
  * Fills a floating-point array with ones.
  *
@@ -46,43 +49,57 @@ __global__ void FillOnes(float *vec, int size) {
 
 int main(int argc, char **argv)
 {
-    int gpu = 0;
-    int iterations = 1000;
-    int random_seed = -1;
-    int classify = -1;
-    std::size_t batch_size = 64;
-    bool pretrained = false;
-    bool save_data = false;
+    int gpu;
+    int iterations;
+    int random_seed;
+    int classify;
+    std::size_t batch_size;
+    bool pretrained;
+    bool save_data;
     const std::string base_path("deps/mnist/");
-    std::string FLAGS_train_images = base_path + "train-images-idx3-ubyte";
-    std::string FLAGS_train_labels = base_path + "train-labels-idx1-ubyte";
-    std::string FLAGS_test_images = base_path + "t10k-images-idx3-ubyte";
-    std::string FLAGS_test_labels = base_path + "t10k-labels-idx1-ubyte";
-    double learning_rate = 0.01;
-    double lr_gamma = 0.01;
-    double lr_power = 0.75;
+    std::string FLAGS_train_images;
+    std::string FLAGS_train_labels;
+    std::string FLAGS_test_images;
+    std::string FLAGS_test_labels;
+    double learning_rate;
+    double lr_gamma;
+    double lr_power;
 
     try {
         // first parse arguments from command line
         argparse::ArgumentParser program("lenet_exercize", "1.0", argparse::default_arguments::help);
 
-        program.add_argument("--gpu").scan<'i', int>().store_into(gpu).help("GPU to run on");
-        program.add_argument("--iterations").scan<'i', int>().store_into(iterations).help("Number of iterations for training");
-        program.add_argument("--random_seed").scan<'i', int>().store_into(random_seed).help("Override random seed (default uses std::random_device)");
-        program.add_argument("--classify").scan<'i', int>().store_into(classify).help("Number of images to classify to compute error rate (default uses entire test set)");
-        program.add_argument("--batch_size").scan<'u', std::size_t>().store_into(classify).help("Batch size for training");
+        program.add_argument("--gpu").scan<'i', int>().store_into(gpu).default_value(0)
+            .help("GPU to run on");
+        program.add_argument("--iterations").scan<'i', int>().store_into(iterations).default_value(1000)
+            .help("Number of iterations for training");
+        program.add_argument("--random_seed").scan<'i', int>().store_into(random_seed).default_value(-1)
+            .help("Override random seed (default uses std::random_device)");
+        program.add_argument("--classify").scan<'i', int>().store_into(classify).default_value(-1)
+            .help("Number of images to classify to compute error rate (default uses entire test set)");
+        program.add_argument("--batch_size").scan<'u', std::size_t>().store_into(batch_size).default_value(64)
+            .help("Batch size for training");
 
-        program.add_argument("--pretrained").store_into(pretrained).help("Use the pretrained CUDNN model as input");
-        program.add_argument("--save_data").store_into(save_data).help("Save pretrained weights to file");
+        program.add_argument("--pretrained").store_into(pretrained).default_value(false)
+            .help("Use the pretrained CUDNN model as input");
+        program.add_argument("--save_data").store_into(save_data).default_value(false)
+            .help("Save pretrained weights to file");
 
-        program.add_argument("--train_images").store_into(FLAGS_train_images).help("Training images filename");
-        program.add_argument("--train_labels").store_into(FLAGS_train_labels).help("Training labels filename");
-        program.add_argument("--test_images").store_into(FLAGS_test_images).help("Test images filename");
-        program.add_argument("--test_labels").store_into(FLAGS_test_labels).help("Test labels filename");
+        program.add_argument("--train_images").store_into(FLAGS_train_images)
+            .default_value(base_path + "train-images-idx3-ubyte").help("Training images filename");
+        program.add_argument("--train_labels").store_into(FLAGS_train_labels)
+            .default_value(base_path + "train-labels-idx1-ubyte").help("Training labels filename");
+        program.add_argument("--test_images").store_into(FLAGS_test_images)
+            .default_value(base_path + "t10k-images-idx3-ubyte").help("Test images filename");
+        program.add_argument("--test_labels").store_into(FLAGS_test_labels)
+            .default_value(base_path + "t10k-labels-idx1-ubyte").help("Test labels filename");
 
-        program.add_argument("--learning_rate").store_into(learning_rate).help("Base learning rate");
-        program.add_argument("--lr_gamma").store_into(lr_gamma).help("Learning rate policy gamma");
-        program.add_argument("--lr_power").store_into(lr_power).help("Learning rate policy power");
+        program.add_argument("--learning_rate").store_into(learning_rate).default_value(0.01)
+            .help("Base learning rate");
+        program.add_argument("--lr_gamma").store_into(lr_gamma).default_value(0.01)
+            .help("Learning rate policy gamma");
+        program.add_argument("--lr_power").store_into(lr_power).default_value(0.75)
+            .help("Learning rate policy power");
 
         program.parse_args(argc, argv);
     }
@@ -136,7 +153,7 @@ int main(int argc, char **argv)
     FullyConnectedLayer fc2(fc1.outputs, 10);
 
     // Initialize CUDNN/CUBLAS training context
-    TrainingContext context(gpu, batch_size, conv1, pool1, conv2, pool2, fc1, fc2);
+    TrainingContext context(gpu, batch_size, BLOCK_WIDTH, conv1, pool1, conv2, pool2, fc1, fc2);
 
     // Determine initial network structure
     bool bRet = true;
@@ -178,16 +195,16 @@ int main(int argc, char **argv)
     // Forward propagation data
     //                         Buffer    | Element       | N                   | C                  | H                                 | W
     //-----------------------------------------------------------------------------------------------------------------------------------------
-    cuda_ptr<float> d_data(context.m_batchSize * channels * height * width);
-    cuda_ptr<float> d_labels(context.m_batchSize * 1 * 1 * 1);
-    cuda_ptr<float> d_conv1(context.m_batchSize * conv1.out_channels * conv1.out_height * conv1.out_width);
-    cuda_ptr<float> d_pool1(context.m_batchSize * conv1.out_channels * (conv1.out_height / pool1.stride) * (conv1.out_width / pool1.stride));
-    cuda_ptr<float> d_conv2(context.m_batchSize * conv2.out_channels * conv2.out_height * conv2.out_width);
-    cuda_ptr<float> d_pool2(context.m_batchSize * conv2.out_channels * (conv2.out_height / pool2.stride) * (conv2.out_width / pool2.stride));
-    cuda_ptr<float> d_fc1(context.m_batchSize * fc1.outputs);
-    cuda_ptr<float> d_fc1relu(context.m_batchSize * fc1.outputs);
-    cuda_ptr<float> d_fc2(context.m_batchSize * fc2.outputs);
-    cuda_ptr<float> d_fc2smax(context.m_batchSize * fc2.outputs);
+    cuda_ptr<float> d_data(context.batchSize * channels * height * width);
+    cuda_ptr<float> d_labels(context.batchSize * 1 * 1 * 1);
+    cuda_ptr<float> d_conv1(context.batchSize * conv1.out_channels * conv1.out_height * conv1.out_width);
+    cuda_ptr<float> d_pool1(context.batchSize * conv1.out_channels * (conv1.out_height / pool1.stride) * (conv1.out_width / pool1.stride));
+    cuda_ptr<float> d_conv2(context.batchSize * conv2.out_channels * conv2.out_height * conv2.out_width);
+    cuda_ptr<float> d_pool2(context.batchSize * conv2.out_channels * (conv2.out_height / pool2.stride) * (conv2.out_width / pool2.stride));
+    cuda_ptr<float> d_fc1(context.batchSize * fc1.outputs);
+    cuda_ptr<float> d_fc1relu(context.batchSize * fc1.outputs);
+    cuda_ptr<float> d_fc2(context.batchSize * fc2.outputs);
+    cuda_ptr<float> d_fc2smax(context.batchSize * fc2.outputs);
 
     // Network parameters
     cuda_ptr<float> d_pconv1(conv1.pconv.size());
@@ -212,20 +229,20 @@ int main(int argc, char **argv)
     // Differentials w.r.t. data
     //                         Buffer     | Element       | N                   | C                  | H                                 | W
     //-----------------------------------------------------------------------------------------------------------------------------------------
-    cuda_ptr<float> d_dpool1(context.m_batchSize * conv1.out_channels * conv1.out_height * conv1.out_width);
-    cuda_ptr<float> d_dpool2(context.m_batchSize * conv2.out_channels * conv2.out_height * conv2.out_width);
-    cuda_ptr<float> d_dconv2(context.m_batchSize * conv1.out_channels * (conv1.out_height / pool1.stride) * (conv1.out_width / pool1.stride));
-    cuda_ptr<float> d_dfc1(context.m_batchSize * fc1.inputs);
-    cuda_ptr<float> d_dfc1relu(context.m_batchSize * fc1.outputs);
-    cuda_ptr<float> d_dfc2(context.m_batchSize * fc2.inputs);
-    cuda_ptr<float> d_dfc2smax(context.m_batchSize * fc2.outputs);
-    cuda_ptr<float> d_dlossdata(context.m_batchSize * fc2.outputs);
+    cuda_ptr<float> d_dpool1(context.batchSize * conv1.out_channels * conv1.out_height * conv1.out_width);
+    cuda_ptr<float> d_dpool2(context.batchSize * conv2.out_channels * conv2.out_height * conv2.out_width);
+    cuda_ptr<float> d_dconv2(context.batchSize * conv1.out_channels * (conv1.out_height / pool1.stride) * (conv1.out_width / pool1.stride));
+    cuda_ptr<float> d_dfc1(context.batchSize * fc1.inputs);
+    cuda_ptr<float> d_dfc1relu(context.batchSize * fc1.outputs);
+    cuda_ptr<float> d_dfc2(context.batchSize * fc2.inputs);
+    cuda_ptr<float> d_dfc2smax(context.batchSize * fc2.outputs);
+    cuda_ptr<float> d_dlossdata(context.batchSize * fc2.outputs);
 
     // Temporary buffers and workspaces
     cuda_ptr<std::byte> d_cudnn_workspace;
-    cuda_ptr<float> d_onevec(context.m_batchSize);
-    if (context.m_workspaceSize > 0) {
-        d_cudnn_workspace.reset(context.m_workspaceSize);
+    cuda_ptr<float> d_onevec(context.batchSize);
+    if (context.workspaceSize > 0) {
+        d_cudnn_workspace.reset(context.workspaceSize);
     }
 
     /////////////////////////////////////////////////////////////////////////////
@@ -241,7 +258,7 @@ int main(int argc, char **argv)
     checkCudaErrors(cudaMemcpyAsync(d_pfc2bias, &fc2.pbias[0], sizeof(float) * fc2.pbias.size(), cudaMemcpyHostToDevice));
 
     // Fill one-vector with ones
-    FillOnes<<<RoundUp(context.m_batchSize, BW), BW>>>(d_onevec, context.m_batchSize);
+    FillOnes<<<RoundUp(context.batchSize, BLOCK_WIDTH), BLOCK_WIDTH>>>(d_onevec, context.batchSize);
 
     std::cout << "Preparing dataset" << std::endl;
 
@@ -258,13 +275,13 @@ int main(int argc, char **argv)
     auto t1 = std::chrono::high_resolution_clock::now();
     for (int iter = 0; iter < iterations; ++iter) {
         // Train
-        int imageid = iter % (train_size / context.m_batchSize);
+        int imageid = iter % (train_size / context.batchSize);
 
         // Prepare current batch on device
-        checkCudaErrors(cudaMemcpyAsync(d_data(), &train_images_float[imageid * context.m_batchSize * width * height * channels],
-                                        sizeof(float) * context.m_batchSize * channels * width * height, cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpyAsync(d_labels, &train_labels_float[imageid * context.m_batchSize],
-                                        sizeof(float) * context.m_batchSize, cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpyAsync(d_data(), &train_images_float[imageid * context.batchSize * width * height * channels],
+                                        sizeof(float) * context.batchSize * channels * width * height, cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpyAsync(d_labels, &train_labels_float[imageid * context.batchSize],
+                                        sizeof(float) * context.batchSize, cudaMemcpyHostToDevice));
 
         // Forward propagation
         context.ForwardPropagation(d_data, d_conv1, d_pool1, d_conv2, d_pool2, d_fc1, d_fc1relu, d_fc2, d_fc2smax,
@@ -319,11 +336,11 @@ int main(int argc, char **argv)
     }
 
     // Initialize a TrainingContext structure for testing (different batch size)
-    TrainingContext test_context(gpu, 1, conv1, pool1, conv2, pool2, fc1, fc2);
+    TrainingContext test_context(gpu, 1, BLOCK_WIDTH, conv1, pool1, conv2, pool2, fc1, fc2);
 
     // Ensure correct workspaceSize is allocated for testing
-    if (context.m_workspaceSize < test_context.m_workspaceSize) {
-        d_cudnn_workspace.reset(test_context.m_workspaceSize);
+    if (context.workspaceSize < test_context.workspaceSize) {
+        d_cudnn_workspace.reset(test_context.workspaceSize);
     }
 
     int num_errors = 0;

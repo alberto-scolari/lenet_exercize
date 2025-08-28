@@ -2,11 +2,11 @@
 
 #include <sstream>
 #include <iostream>
+#include <string_view>
 
 #include <cuda_runtime.h>
-
-// Block width for CUDA kernels
-#define BW 128
+#include <cublas_v2.h>
+#include <cudnn.h>
 
 /**
  * Computes ceil(x / y) for integral nonnegative values.
@@ -21,36 +21,10 @@ constexpr inline unsigned int RoundUp(unsigned int nominator, unsigned int denom
 // Adapted from the CUDNN classification code
 // sample: https://developer.nvidia.com/cuDNN
 
-#define FatalError(s)                                     \
-    do                                                    \
-    {                                                     \
-        std::stringstream _where, _message;               \
-        _where << __FILE__ << ':' << __LINE__;            \
-        _message << std::string(s) + "\n"                 \
-                 << __FILE__ << ':' << __LINE__;          \
-        std::cerr << _message.str() << "\nAborting...\n"; \
-        cudaDeviceReset();                                \
-        exit(1);                                          \
-    } while (0)
+void FatalError(std::string_view s, std::decay_t<decltype(__FILE__)> file = __FILE__, decltype(__LINE__) line = __LINE__);
 
-#define checkCUDNN(status)                                              \
-    do                                                                  \
-    {                                                                   \
-        std::stringstream _error;                                       \
-        if (status != CUDNN_STATUS_SUCCESS)                             \
-        {                                                               \
-            _error << "CUDNN failure: " << cudnnGetErrorString(status); \
-            FatalError(_error.str());                                   \
-        }                                                               \
-    } while (0)
+void checkCUDNN(cudnnStatus_t status, std::decay_t<decltype(__FILE__)> file = __FILE__, decltype(__LINE__) line = __LINE__);
 
-#define checkCudaErrors(status)                   \
-    do                                            \
-    {                                             \
-        std::stringstream _error;                 \
-        if (status != 0)                          \
-        {                                         \
-            _error << "Cuda failure: " << status; \
-            FatalError(_error.str());             \
-        }                                         \
-    } while (0)
+void checkCuBLAS(cublasStatus_t status, std::decay_t<decltype(__FILE__)> file = __FILE__, decltype(__LINE__) line = __LINE__);
+
+void checkCudaErrors(cudaError_t status, std::decay_t<decltype(__FILE__)> file = __FILE__, decltype(__LINE__) line = __LINE__);
