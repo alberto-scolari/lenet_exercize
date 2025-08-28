@@ -21,6 +21,8 @@ static inline void free_cuda_ptr(T *p) {
   checkCudaErrors(cudaFree(p));
 }
 
+/// @brief Wrapper for memory areas allocated via cudaMalloc(), with its size.
+/// @tparam T held type.
 template <typename T>
 class cuda_ptr {
   std::unique_ptr<T, std::remove_reference_t<decltype(free_cuda_ptr<T>)> *>

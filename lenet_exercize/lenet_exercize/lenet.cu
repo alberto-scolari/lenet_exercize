@@ -13,6 +13,7 @@
 #include <argparse/argparse.hpp>
 #include <chrono>
 #include <cstddef>
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <iterator>
@@ -89,7 +90,7 @@ int main(int argc, char **argv) {
             "entire test set)");
     program.add_argument("--batch_size")
         .scan<'u', std::size_t>()
-        .default_value(64)
+        .default_value(64UL)
         .store_into(batch_size)
         .help("Batch size for training");
 
@@ -135,9 +136,11 @@ int main(int argc, char **argv) {
     program.parse_args(argc, argv);
   } catch (const std::exception &err) {
     std::cerr << "Program error! An exception occurred: \n" << err.what();
+    std::exit(1);
   } catch (...) {
     std::cerr
         << "Program error! An unknow type of exception occurred.\nAborting.";
+    std::exit(1);
   }
 
   size_t width, height, channels = 1;
@@ -149,12 +152,13 @@ int main(int argc, char **argv) {
   const size_t train_size =
       ReadUByteDataset(FLAGS_train_images.c_str(), FLAGS_train_labels.c_str(),
                        nullptr, nullptr, width, height);
+  if (train_size == 0) {
+    std::cerr << "train size is 0" << std::endl;
+    std::exit(1);
+  }
   const size_t test_size =
       ReadUByteDataset(FLAGS_test_images.c_str(), FLAGS_test_labels.c_str(),
                        nullptr, nullptr, width, height);
-  if (train_size == 0) {
-    return 1;
-  }
 
   std::vector<uint8_t> train_images(train_size * width * height * channels),
       train_labels(train_size);
@@ -162,15 +166,23 @@ int main(int argc, char **argv) {
       test_labels(test_size);
 
   // Read data from datasets
-  if (ReadUByteDataset(FLAGS_train_images.c_str(), FLAGS_train_labels.c_str(),
-                       &train_images[0], &train_labels[0], width,
-                       height) != train_size) {
-    return 2;
+  if (std::size_t s = ReadUByteDataset(
+          FLAGS_train_images.c_str(), FLAGS_train_labels.c_str(),
+          &train_images[0], &train_labels[0], width, height);
+      s != train_size) {
+    std::cerr << "Reading train images from " << FLAGS_train_images
+              << ", returned train size is " << s << ", expected is "
+              << train_size << std::endl;
+    std::exit(1);
   }
-  if (ReadUByteDataset(FLAGS_test_images.c_str(), FLAGS_test_labels.c_str(),
-                       &test_images[0], &test_labels[0], width,
-                       height) != test_size) {
-    return 3;
+  if (std::size_t s = stdReadUByteDataset(
+          FLAGS_test_images.c_str(), FLAGS_test_labels.c_str(), &test_images[0],
+          &test_labels[0], width, height);
+      s != test_size) {
+    std::cerr << "Reading test images from " << FLAGS_test_images
+              << ", returned train size is " << s << ", expected is "
+              << train_size << std::endl;
+    std::exit(1);
   }
 
   std::cout << "Done. Training dataset size: " << train_size
@@ -184,7 +196,7 @@ int main(int argc, char **argv) {
   if (gpu < 0 || gpu >= num_gpus) {
     std::cerr << "ERROR: Invalid GPU ID " << gpu << " (There are " << num_gpus
               << " GPUs on this machine)" << std::endl;
-    return 4;
+    std::exit(1);
   }
 
   // Create the LeNet network architecture
