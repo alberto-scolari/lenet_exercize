@@ -67,69 +67,69 @@ int main(int argc, char **argv) {
 
     program.add_argument("--gpu")
         .scan<'i', int>()
-        .store_into(gpu)
         .default_value(0)
+        .store_into(gpu)
         .help("GPU to run on");
     program.add_argument("--iterations")
         .scan<'i', int>()
-        .store_into(iterations)
         .default_value(1000)
+        .store_into(iterations)
         .help("Number of iterations for training");
     program.add_argument("--random_seed")
         .scan<'i', int>()
-        .store_into(random_seed)
         .default_value(-1)
+        .store_into(random_seed)
         .help("Override random seed (default uses std::random_device)");
     program.add_argument("--classify")
         .scan<'i', int>()
-        .store_into(classify)
         .default_value(-1)
+        .store_into(classify)
         .help(
             "Number of images to classify to compute error rate (default uses "
             "entire test set)");
     program.add_argument("--batch_size")
         .scan<'u', std::size_t>()
-        .store_into(batch_size)
         .default_value(64)
+        .store_into(batch_size)
         .help("Batch size for training");
 
     program.add_argument("--pretrained")
-        .store_into(pretrained)
         .default_value(false)
+        .store_into(pretrained)
         .help("Use the pretrained CUDNN model as input");
     program.add_argument("--save_data")
-        .store_into(save_data)
         .default_value(false)
+        .store_into(save_data)
         .help("Save pretrained weights to file");
 
     program.add_argument("--train_images")
-        .store_into(FLAGS_train_images)
         .default_value(base_path + "train-images-idx3-ubyte")
+        .store_into(FLAGS_train_images)
         .help("Training images filename");
     program.add_argument("--train_labels")
-        .store_into(FLAGS_train_labels)
         .default_value(base_path + "train-labels-idx1-ubyte")
+        .store_into(FLAGS_train_labels)
         .help("Training labels filename");
     program.add_argument("--test_images")
-        .store_into(FLAGS_test_images)
         .default_value(base_path + "t10k-images-idx3-ubyte")
+        .store_into(FLAGS_test_images)
         .help("Test images filename");
     program.add_argument("--test_labels")
-        .store_into(FLAGS_test_labels)
         .default_value(base_path + "t10k-labels-idx1-ubyte")
+        .store_into(FLAGS_test_labels)
         .help("Test labels filename");
 
     program.add_argument("--learning_rate")
-        .store_into(learning_rate)
         .default_value(0.01)
+        .store_into(learning_rate)
         .help("Base learning rate");
     program.add_argument("--lr_gamma")
-        .store_into(lr_gamma)
         .default_value(0.01)
+        .store_into(lr_gamma)
         .help("Learning rate policy gamma");
     program.add_argument("--lr_power")
-        .store_into(lr_power)
         .default_value(0.75)
+        .store_into(lr_power)
         .help("Learning rate policy power");
 
     program.parse_args(argc, argv);
