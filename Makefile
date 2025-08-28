@@ -17,7 +17,7 @@ exe_name := build/lenet_example.exe
 mnist_bins := t10k-images-idx3-ubyte t10k-labels-idx1-ubyte train-images-idx3-ubyte train-labels-idx1-ubyte
 mnist_paths := $(addprefix deps/mnist/, $(mnist_bins))
 
-.PHONY: all clean run clang-format
+.PHONY: all clean distclean run clang-format
 
 all: $(exe_name)
 
@@ -29,8 +29,8 @@ deps/mnist:
 
 $(mnist_paths): | deps/mnist
 
-deps/mnist/%: 
-	wget https://github.com/harrypnh/lenet5-from-scratch/blob/main/dataset/MNIST/$%
+deps/mnist/%:
+	wget -P $(dir $@) https://github.com/harrypnh/lenet5-from-scratch/blob/main/dataset/MNIST/$(notdir $@)
 
 mnist : $(mnist_paths)
 
@@ -58,3 +58,6 @@ help:
 
 clean:
 	rm -rf build
+
+distclean: clean
+	rm -rf deps/mnist
