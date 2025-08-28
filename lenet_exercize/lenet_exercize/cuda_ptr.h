@@ -8,7 +8,7 @@
 
 #include <cuda_runtime.h>
 
-#include "common.h"
+#include <lenet_exercize/common.h>
 
 template <typename T> static inline
 T* alloc_cuda_ptr(std::size_t _size)

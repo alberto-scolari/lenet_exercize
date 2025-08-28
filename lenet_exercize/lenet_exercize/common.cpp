@@ -1,7 +1,7 @@
 #include <iostream>
 #include <sstream>
 
-#include "common.h"
+#include <lenet_exercize/common.h>
 
 void FatalError(std::string_view s, std::decay_t<decltype(__FILE__)> file, decltype(__LINE__) line) {
     std::cerr << s << "\n" << file << ':' << line << "\nAborting...\n";

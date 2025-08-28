@@ -16,13 +16,13 @@
 
 #include <argparse/argparse.hpp>
 
-#include "common.h"
-#include "readubyte.h"
-#include "ConvBiasLayer.h"
-#include "MaxPoolLayer.h"
-#include "FullyConnectedLayer.h"
-#include "TrainingContext.h"
-#include "cuda_ptr.h"
+#include <lenet_exercize/common.h>
+#include <lenet_exercize/readubyte.h>
+#include <lenet_exercize/ConvBiasLayer.h>
+#include <lenet_exercize/MaxPoolLayer.h>
+#include <lenet_exercize/FullyConnectedLayer.h>
+#include <lenet_exercize/TrainingContext.h>
+#include <lenet_exercize/cuda_ptr.h>
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // GPU Kernels

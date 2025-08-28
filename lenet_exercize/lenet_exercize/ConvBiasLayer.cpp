@@ -1,12 +1,24 @@
-#include <sstream>
+
 #include <cstdio>
+#include <sstream>
 
-#include "FullyConnectedLayer.h"
+#include <lenet_exercize/ConvBiasLayer.h>
 
-FullyConnectedLayer::FullyConnectedLayer(int inputs_, int outputs_) : inputs(inputs_), outputs(outputs_),
-                                                                      pneurons(inputs_ * outputs_), pbias(outputs_) {}
 
-bool FullyConnectedLayer::FromFile(const char *fileprefix)
+ConvBiasLayer::ConvBiasLayer(int in_channels_, int out_channels_, int kernel_size_,
+                            int in_w_, int in_h_) : pconv(in_channels_ * kernel_size_ * kernel_size_ * out_channels_),
+                                                    pbias(out_channels_)
+{
+    in_channels = in_channels_;
+    out_channels = out_channels_;
+    kernel_size = kernel_size_;
+    in_width = in_w_;
+    in_height = in_h_;
+    out_width = in_w_ - kernel_size_ + 1;
+    out_height = in_h_ - kernel_size_ + 1;
+}
+
+bool ConvBiasLayer::FromFile(const char *fileprefix)
 {
     std::stringstream ssf, ssbf;
     ssf << fileprefix << ".bin";
@@ -19,7 +31,7 @@ bool FullyConnectedLayer::FromFile(const char *fileprefix)
         printf("ERROR: Cannot open file %s\n", ssf.str().c_str());
         return false;
     }
-    fread(&pneurons[0], sizeof(float), inputs * outputs, fp);
+    fread(&pconv[0], sizeof(float), in_channels * out_channels * kernel_size * kernel_size, fp);
     fclose(fp);
 
     // Read bias file
@@ -29,12 +41,12 @@ bool FullyConnectedLayer::FromFile(const char *fileprefix)
         printf("ERROR: Cannot open file %s\n", ssbf.str().c_str());
         return false;
     }
-    fread(&pbias[0], sizeof(float), outputs, fp);
+    fread(&pbias[0], sizeof(float), out_channels, fp);
     fclose(fp);
     return true;
 }
 
-void FullyConnectedLayer::ToFile(const char *fileprefix)
+void ConvBiasLayer::ToFile(const char *fileprefix)
 {
     std::stringstream ssf, ssbf;
     ssf << fileprefix << ".bin";
@@ -47,7 +59,7 @@ void FullyConnectedLayer::ToFile(const char *fileprefix)
         printf("ERROR: Cannot open file %s\n", ssf.str().c_str());
         exit(2);
     }
-    fwrite(&pneurons[0], sizeof(float), inputs * outputs, fp);
+    fwrite(&pconv[0], sizeof(float), in_channels * out_channels * kernel_size * kernel_size, fp);
     fclose(fp);
 
     // Write bias file
@@ -57,6 +69,6 @@ void FullyConnectedLayer::ToFile(const char *fileprefix)
         printf("ERROR: Cannot open file %s\n", ssbf.str().c_str());
         exit(2);
     }
-    fwrite(&pbias[0], sizeof(float), outputs, fp);
+    fwrite(&pbias[0], sizeof(float), out_channels, fp);
     fclose(fp);
 }

@@ -10,7 +10,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "readubyte.h"
+#include <lenet_exercize/readubyte.h>
 
 #include <cstdio>
 #include <cstdlib>

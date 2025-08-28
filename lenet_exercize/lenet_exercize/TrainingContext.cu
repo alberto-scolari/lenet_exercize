@@ -3,8 +3,8 @@
 
 #include <cublas_v2.h>
 
-#include "TrainingContext.h"
-#include "common.h"
+#include <lenet_exercize/TrainingContext.h>
+#include <lenet_exercize/common.h>
 
 /**
  * Computes the backpropagation results of the Softmax loss for each result in a batch.

@@ -2,9 +2,9 @@
 
 #include <cudnn.h>
 
-#include "ConvBiasLayer.h"
-#include "MaxPoolLayer.h"
-#include "FullyConnectedLayer.h"
+#include <lenet_exercize/ConvBiasLayer.h>
+#include <lenet_exercize/MaxPoolLayer.h>
+#include <lenet_exercize/FullyConnectedLayer.h>
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // CUDNN/CUBLAS training context

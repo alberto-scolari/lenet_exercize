@@ -3,8 +3,8 @@ CLANG_FORMAT_EXE ?= clang-format
 
 .SUFFIXES: .o .cpp .h .cu .cu.o .cpp.o .d
 
-CPPFLAGS := --std c++17 -Wno-deprecated-gpu-targets -I/usr/local/cuda/include \
-	-I/usr/local/cuda/targets/x86_64-linux/include -isystem deps/argparse/ \
+CPPFLAGS := --std c++17 -Wno-deprecated-gpu-targets -I lenet_exercize/ -isystem /usr/local/cuda/include \
+	-isystem /usr/local/cuda/targets/x86_64-linux/include -isystem deps/argparse/ \
 	-MMD -MP -Xcompiler -Wall -Xcompiler -Wextra
 LDLIBS := -lcudnn -lcublas -lcuda
 
@@ -39,10 +39,10 @@ mnist : $(mnist_paths)
 build:
 	mkdir -p build
 
-build/%.cu.o : %.cu
+build/%.cu.o : lenet_exercize/lenet_exercize/%.cu
 	$(CXX) $< -c -o $@ $(CPPFLAGS)
 
-build/%.cpp.o : %.cpp
+build/%.cpp.o : lenet_exercize/lenet_exercize/%.cpp
 	$(CXX) $< -c -o $@ $(CPPFLAGS)
 
 $(objs): | build
